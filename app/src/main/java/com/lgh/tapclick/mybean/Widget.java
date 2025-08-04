@@ -47,7 +47,7 @@ public class Widget {
         this.clickDelay = 0;
         this.debounceDelay = 0;
         this.noRepeat = false;
-        this.clickOnly = false;
+        this.clickOnly = true;
         this.widgetClickable = false;
         this.widgetRect = null;
         this.widgetNodeId = null;

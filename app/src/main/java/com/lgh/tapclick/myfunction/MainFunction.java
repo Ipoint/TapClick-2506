@@ -157,7 +157,7 @@ public class MainFunction {
         preActivity = StrUtil.EMPTY;
     }
 
-    protected void onServiceConnected() {
+    public void onServiceConnected() {
         serviceInfo = service.getServiceInfo();
         IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(Intent.ACTION_SCREEN_OFF);
@@ -358,21 +358,23 @@ public class MainFunction {
             DisplayMetrics metrics = new DisplayMetrics();
             windowManager.getDefaultDisplay().getRealMetrics(metrics);
             aParams.x = (metrics.widthPixels - aParams.width) / 2;
-            aParams.y = metrics.heightPixels - aParams.height;
+            aParams.y = metrics.heightPixels - addDataBinding.getRoot().getHeight();
             bParams.width = metrics.widthPixels;
             bParams.height = metrics.heightPixels;
             cParams.x = (metrics.widthPixels - cParams.width) / 2;
             cParams.y = (metrics.heightPixels - cParams.height) / 2;
             windowManager.updateViewLayout(addDataBinding.getRoot(), aParams);
+            windowManager.updateViewLayout(widgetSelectBinding.getRoot(), bParams);
             windowManager.updateViewLayout(viewClickPosition, cParams);
-            widgetSelectBinding.frame.removeAllViews();
-            TextView text = new TextView(service);
-            text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
-            text.setGravity(Gravity.CENTER);
-            text.setTextColor(0xffff0000);
-            text.setText("请重新刷新布局");
-            widgetSelectBinding.frame.addView(text, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER));
-            windowManager.updateViewLayout(widgetSelectBinding.frame, bParams);
+            if (bParams.alpha != 0) {
+                TextView text = new TextView(service);
+                text.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
+                text.setGravity(Gravity.CENTER);
+                text.setTextColor(0xffff0000);
+                text.setText("请重新刷新布局");
+                widgetSelectBinding.frame.removeAllViews();
+                widgetSelectBinding.frame.addView(text, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+            }
         }
         if (dbClickView != null) {
             Rect rect = MyUtils.getDbClickPosition();
@@ -520,10 +522,12 @@ public class MainFunction {
                             if (clickNumber++ >= e.clickNumber) {
                                 throw new RuntimeException();
                             }
+                            int centerX = rect.centerX();
+                            int centerY = rect.centerY();
                             if (e.clickOnly) {
-                                click(rect.centerX(), rect.centerY());
+                                click(centerX, centerY);
                             } else if (!nodeInfo.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                                click(rect.centerX(), rect.centerY());
+                                click(centerX, centerY);
                             }
                             if (clickNumber == 1) {
                                 e.triggerCount += 1;
@@ -563,28 +567,26 @@ public class MainFunction {
      * 查找所有
      * 的控件
      */
-    private List<AccessibilityNodeInfo> findAllNode(List<AccessibilityNodeInfo> root) {
-        LinkedList<AccessibilityNodeInfo> listA = new LinkedList<>(root);
+    private List<AccessibilityNodeInfo> findAllNode(AccessibilityNodeInfo root) {
+        if (MyUtils.isModuleValid()) {
+            List<AccessibilityNodeInfo> listR = ListUtil.toList(root);
+            listR.addAll(root.findAccessibilityNodeInfosByText(null));
+            if (listR.size() > 1) {
+                return listR.stream().distinct().filter(Objects::nonNull).collect(Collectors.toList());
+            }
+        }
         HashSet<AccessibilityNodeInfo> setR = new HashSet<>();
+        LinkedList<AccessibilityNodeInfo> listA = ListUtil.toLinkedList(root);
         while (!listA.isEmpty()) {
-            AccessibilityNodeInfo node = listA.poll();
-            if (node != null) {
-                setR.add(node);
-                for (int n = 0; n < node.getChildCount(); n++) {
-                    listA.add(node.getChild(n));
+            AccessibilityNodeInfo nodeInfo = listA.poll();
+            if (nodeInfo != null) {
+                setR.add(nodeInfo);
+                for (int n = 0; n < nodeInfo.getChildCount(); n++) {
+                    listA.add(nodeInfo.getChild(n));
                 }
             }
         }
-        return setR.stream().sorted(new Comparator<AccessibilityNodeInfo>() {
-            @Override
-            public int compare(AccessibilityNodeInfo a, AccessibilityNodeInfo b) {
-                Rect rectA = new Rect();
-                Rect rectB = new Rect();
-                a.getBoundsInScreen(rectA);
-                b.getBoundsInScreen(rectB);
-                return rectB.width() * rectB.height() - rectA.width() * rectA.height();
-            }
-        }).collect(Collectors.toList());
+        return ListUtil.toList(setR);
     }
 
     /**
@@ -835,7 +837,16 @@ public class MainFunction {
                             for (AccessibilityWindowInfo windowInfo : windowInfoList) {
                                 AccessibilityNodeInfo nodeInfo = windowInfo.getRoot();
                                 if (TextUtils.equals(nodeInfo.getPackageName(), root.getPackageName())) {
-                                    nodeList.addAll(findAllNode(Collections.singletonList(nodeInfo)));
+                                    nodeList.addAll(findAllNode(nodeInfo).stream().sorted(new Comparator<AccessibilityNodeInfo>() {
+                                        @Override
+                                        public int compare(AccessibilityNodeInfo a, AccessibilityNodeInfo b) {
+                                            Rect rectA = new Rect();
+                                            Rect rectB = new Rect();
+                                            a.getBoundsInScreen(rectA);
+                                            b.getBoundsInScreen(rectB);
+                                            return rectB.width() * rectB.height() - rectA.width() * rectA.height();
+                                        }
+                                    }).collect(Collectors.toList()));
                                 }
                             }
                             if (nodeList.isEmpty()) {
@@ -1247,8 +1258,8 @@ public class MainFunction {
         DisplayMetrics displayMetrics = new DisplayMetrics();
         windowManager.getDefaultDisplay().getRealMetrics(displayMetrics);
         WindowManager.LayoutParams lp = alertDialog.getWindow().getAttributes();
-        lp.width = displayMetrics.widthPixels / 5 * 4;
-        lp.height = displayMetrics.heightPixels / 3;
+        lp.width = Math.min(displayMetrics.widthPixels, displayMetrics.heightPixels) / 5 * 4;
+        lp.height = Math.max(displayMetrics.widthPixels, displayMetrics.heightPixels) / 3;
         alertDialog.onWindowAttributesChanged(lp);
 
         dbClickSettingBinding.seekBarW.setMax(displayMetrics.widthPixels / 2);
